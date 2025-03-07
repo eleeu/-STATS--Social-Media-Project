@@ -1,0 +1,123 @@
+---
+title: "Final Project"
+author: "Ethan Lee"
+date: "2024-02-21"
+output:
+  pdf_document: 
+    latex_engine: xelatex
+  html_document: default
+---
+```{r}
+tiktok_data <- read.csv("tiktok4.csv")
+```
+```{r}
+tiktok_observations <- nrow(tiktok_data)
+tiktok_variables <- ncol(tiktok_data)
+
+print(paste("number of observations:", tiktok_observations))
+print(paste("number of variables:", tiktok_variables))
+print(names(tiktok_data))
+```
+```{r}
+# Function to convert values with 'M' and 'K' suffixes to numeric
+convert_followers <- function(x) {
+  # Remove 'M' and 'K' suffixes and convert to numeric
+  num <- as.numeric(sub("[^0-9.]", "", x))
+  # Multiply by the necessary value to get the number
+  if (endsWith(x, "M")) {
+    num <- num * 1e6
+  } else if (endsWith(x, "K")) {
+    num <- num * 1e3
+  }
+  num
+}
+
+tiktok_data$followers_numeric <- sapply(tiktok_data$followers, convert_followers)
+tiktok_data$views_numeric <- sapply(tiktok_data$views.avg., convert_followers)
+tiktok_data$likes_numeric <- sapply(tiktok_data$likes.avg.., convert_followers)
+tiktok_data$comments_numeric <- sapply(tiktok_data$comments.avg.., convert_followers)
+tiktok_data$shares_numeric <- sapply(tiktok_data$shares.avg.., convert_followers)
+```
+
+```{r}
+library(dplyr)
+sorted_tiktok <- arrange(tiktok_data, desc(views_numeric))
+head(sorted_tiktok, 10)
+```
+
+```{r}
+wanted_columns <- c("followers_numeric", "views_numeric", "likes_numeric", "comments_numeric", "shares_numeric")
+tiktok_subset <-  tiktok_data[wanted_columns]
+
+pairs(tiktok_subset)
+```
+
+```{r}
+m1 <- lm(views_numeric ~ followers_numeric + likes_numeric + comments_numeric + shares_numeric, data = tiktok_subset)
+summary(m1)
+anova(m1)
+```
+
+```{r}
+par(mfrow = c(2,2))
+plot(m1)
+```
+
+```{r}
+library(car)
+tiktok_subset$comments_numeric[tiktok_subset$comments_numeric == 0] <- 1
+summary(tranxy <- powerTransform(cbind(views_numeric, followers_numeric, likes_numeric, 
+                                       comments_numeric, shares_numeric) ~ 1, data = tiktok_subset))
+tiktok_subset$transformed_followers <- (tiktok_subset$followers_numeric)^(0.19)
+tiktok_subset$transformed_likes <- (tiktok_subset$likes_numeric)^(0.15)
+tiktok_subset$transformed_comments <- (tiktok_subset$comments_numeric)^(0.19)
+tiktok_subset$transformed_shares <- (tiktok_subset$shares_numeric)^(-0.08)
+tiktok_subset$transformed_views <- log(tiktok_subset$views_numeric)
+```
+```{r}
+m2 <- lm(transformed_views ~ transformed_followers + 
+                    transformed_likes + transformed_shares + transformed_comments, data = tiktok_subset)
+summary(m2)
+anova(m2)
+```
+
+
+```{r}
+tt_model_empty <- lm(transformed_views ~ 1, data = tiktok_subset)
+tt_forward_model <- step(tt_model_empty, scope = transformed_views ~ transformed_followers + transformed_likes 
+                         + transformed_comments + transformed_shares, data = tiktok_subset, direction = "forward")
+```
+
+```{r}
+m3 <- lm(transformed_views ~ transformed_followers + 
+                    transformed_likes + transformed_shares, data = tiktok_subset)
+summary(m3)
+anova(m3)
+```
+
+```{r}
+par(mfrow = c(2,2))
+plot(m3)
+```
+```{r}
+par(mfrow=c(2,2))
+StanRes2 <- rstandard(m3)
+plot(tiktok_subset$transformed_followers,StanRes2,ylab="Standardized Residuals")
+plot(tiktok_subset$transformed_likes,StanRes2,ylab="Standardized Residuals")
+plot(tiktok_subset$transformed_shares,StanRes2,ylab="Standardized Residuals")
+plot(m3$fitted.values,StanRes2,ylab="Standardized Residuals",xlab="Fitted Values")
+```
+```{r}
+library(car)
+par(mfrow=c(2,2))
+avPlot(m3, variable = "transformed_followers", ask=FALSE)
+avPlot(m3, variable = "transformed_likes", ask=FALSE)
+avPlot(m3, variable = "transformed_shares", ask=FALSE)
+```
+
+
+```{r}
+vif(m3)
+```
+
+
